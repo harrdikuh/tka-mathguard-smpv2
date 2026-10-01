@@ -46,7 +46,7 @@ jobs:
 
       - name: Build APK
         run: |
-          gradle :app:assembleDebug --stacktrace
+          gradle :app:assembleDebug --stacktrace--info
 
       - name: Find APK
         run: |
