@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
 
       - name: Setup Java 17
@@ -25,41 +25,33 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
-        with:
-          packages: 'platform-tools'
 
-      - name: Install Android SDK packages
+      - name: Install Android SDK
         run: |
-          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-35"
+          sdkmanager "build-tools;35.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Check project
-        run: |
-          echo "=== ROOT ==="
-          ls -la
-          echo "=== APP ==="
-          ls -la app
-
       - name: Build APK
         run: |
-          gradle :app:assembleDebug --stacktrace--info 2>&1 | tee build.log
-          - name: Upload build log
-  uses: actions/upload-artifact@v4
-  with:
-    name: build-log
-    path: build.log
+          gradle :app:assembleDebug --stacktrace --info 2>&1 | tee build.log
 
-      - name: Find APK
-        run: |
-          find . -type f -name "*.apk" -print
-
-      - name: Upload APK
+      - name: Upload build log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: TKA-MathGuard-debug
+          name: build-log
+          path: build.log
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TKA-MathGuard-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
