@@ -2,485 +2,721 @@
 package com.example.tkamathguard
 
 import android.os.Bundle
-import android.content.Context
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.compose.runtime.DisposableEffect
-data class MathQuestion(
-    val id: Int,
+private data class Question(
+    val id: Long,
     val text: String,
     val options: List<String>,
-    val answer: String
+    val correct: Int
 )
 
-data class ExamResult(
+private data class ExamResult(
     val name: String,
     val classroom: String,
     val score: Int,
     val correct: Int,
-    val wrong: Int
+    val wrong: Int,
+    val date: Long
 )
 
-private fun questionBank(): List<MathQuestion> = listOf(
-    MathQuestion(1, "Jika 3x + 5 = 20, nilai x adalah ...",
-        listOf("3", "4", "5", "6"), "5"),
-    MathQuestion(2, "Hasil dari 2³ × 2² adalah ...",
-        listOf("16", "24", "32", "64"), "32"),
-    MathQuestion(3, "Akar kuadrat dari 144 adalah ...",
-        listOf("10", "11", "12", "14"), "12"),
-    MathQuestion(4, "Segitiga memiliki alas 12 cm dan tinggi 8 cm. Luasnya ...",
-        listOf("24 cm²", "48 cm²", "96 cm²", "40 cm²"), "48 cm²"),
-    MathQuestion(5, "Keliling lingkaran dengan jari-jari 7 cm adalah ... (π = 22/7)",
-        listOf("22 cm", "44 cm", "49 cm", "154 cm"), "44 cm"),
-    MathQuestion(6, "Perbandingan A : B = 2 : 3. Jika jumlahnya 25, nilai A adalah ...",
-        listOf("5", "10", "15", "20"), "10"),
-    MathQuestion(7, "Rata-rata dari 6, 8, 10, dan 12 adalah ...",
-        listOf("8", "9", "10", "11"), "9"),
-    MathQuestion(8, "15% dari 200 adalah ...",
-        listOf("15", "20", "30", "40"), "30"),
-    MathQuestion(9, "Segitiga siku-siku memiliki sisi tegak 6 cm dan 8 cm. Sisi miringnya ...",
-        listOf("9 cm", "10 cm", "12 cm", "14 cm"), "10 cm"),
-    MathQuestion(10, "Hasil dari 3/4 + 1/8 adalah ...",
-        listOf("4/12", "5/8", "7/8", "1"), "7/8"),
-    MathQuestion(11, "Jika 5x = -20, nilai x adalah ...",
-        listOf("-5", "-4", "4", "5"), "-4"),
-    MathQuestion(12, "Volume kubus dengan panjang rusuk 4 cm adalah ...",
-        listOf("16 cm³", "32 cm³", "48 cm³", "64 cm³"), "64 cm³"),
-    MathQuestion(13, "Dua sudut segitiga adalah 50° dan 60°. Sudut ketiganya ...",
-        listOf("60°", "70°", "80°", "90°"), "70°"),
-    MathQuestion(14, "Pola bilangan 3, 7, 11, 15, ... Angka berikutnya adalah ...",
-        listOf("17", "18", "19", "20"), "19"),
-    MathQuestion(15, "Peluang muncul angka genap saat melempar dadu adalah ...",
-        listOf("1/6", "1/3", "1/2", "2/3"), "1/2"),
-    MathQuestion(16, "Jika 2(x - 3) = 10, nilai x adalah ...",
-        listOf("5", "6", "8", "10"), "8"),
-    MathQuestion(17, "Skala peta 1 : 100.000. Jarak pada peta 3 cm. Jarak sebenarnya ...",
-        listOf("300 m", "1 km", "3 km", "30 km"), "3 km"),
-    MathQuestion(18, "Median dari 3, 5, 7, 9, 11 adalah ...",
-        listOf("5", "6", "7", "9"), "7"),
-    MathQuestion(19, "Bentuk pecahan paling sederhana dari 0,25 adalah ...",
-        listOf("1/2", "1/3", "1/4", "3/4"), "1/4"),
-    MathQuestion(20, "Persegi panjang panjangnya 10 cm dan lebarnya 4 cm. Kelilingnya ...",
-        listOf("14 cm", "28 cm", "40 cm", "20 cm"), "28 cm")
+private data class ExamSession(
+    val name: String,
+    val classroom: String,
+    val questions: List<Question>,
+    val answers: Map<Int, Int>,
+    val index: Int,
+    val endTime: Long,
+    val warnings: Int
 )
-
-private fun loadResults(context: Context): List<ExamResult> {
-    val raw = context.getSharedPreferences(
-        "mathguard", Context.MODE_PRIVATE
-    ).getString("results", "[]") ?: "[]"
-
-    return try {
-        val array = JSONArray(raw)
-        (0 until array.length()).map { i ->
-            val obj = array.getJSONObject(i)
-            ExamResult(
-                obj.getString("name"),
-                obj.getString("classroom"),
-                obj.getInt("score"),
-                obj.getInt("correct"),
-                obj.getInt("wrong")
-            )
-        }
-    } catch (_: Exception) {
-        emptyList()
-    }
-}
-
-private fun saveResults(context: Context, results: List<ExamResult>) {
-    val array = JSONArray()
-    results.forEach { result ->
-        array.put(JSONObject().apply {
-            put("name", result.name)
-            put("classroom", result.classroom)
-            put("score", result.score)
-            put("correct", result.correct)
-            put("wrong", result.wrong)
-        })
-    }
-    context.getSharedPreferences(
-        "mathguard", Context.MODE_PRIVATE
-    ).edit().putString("results", array.toString()).apply()
-}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Mencegah screenshot biasa saat aplikasi aktif.
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_SECURE,
+            WindowManager.LayoutParams.FLAG_SECURE
+        )
+
         setContent {
             MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    MathGuardApp()
-                }
+                MathGuardApp()
             }
         }
     }
+}
+
+private fun defaultQuestions(): List<Question> {
+    val data = listOf(
+        Triple("Hasil dari 12 + 8 adalah ...", listOf("18", "20", "22", "24"), 1),
+        Triple("Hasil dari 7 × 6 adalah ...", listOf("36", "40", "42", "48"), 2),
+        Triple("Hasil dari 45 ÷ 5 adalah ...", listOf("8", "9", "10", "11"), 1),
+        Triple("Hasil dari 3² adalah ...", listOf("6", "9", "12", "15"), 1),
+        Triple("Nilai dari -5 + 12 adalah ...", listOf("-17", "-7", "7", "17"), 2),
+        Triple("Hasil dari 2/3 + 1/3 adalah ...", listOf("1/3", "2/3", "1", "2"), 2),
+        Triple("25% dari 200 adalah ...", listOf("25", "40", "50", "75"), 2),
+        Triple("Jika x + 5 = 12, nilai x adalah ...", listOf("5", "6", "7", "8"), 2),
+        Triple("Keliling persegi dengan sisi 6 cm adalah ...", listOf("12 cm", "18 cm", "24 cm", "36 cm"), 2),
+        Triple("Luas persegi panjang 8 cm × 4 cm adalah ...", listOf("12 cm²", "24 cm²", "32 cm²", "36 cm²"), 2),
+        Triple("Rata-rata dari 4, 6, dan 8 adalah ...", listOf("5", "6", "7", "8"), 1),
+        Triple("Sudut siku-siku besarnya ...", listOf("45°", "60°", "90°", "180°"), 2),
+        Triple("Bilangan prima berikut adalah ...", listOf("9", "15", "17", "21"), 2),
+        Triple("Hasil dari 3 × (4 + 2) adalah ...", listOf("14", "18", "20", "24"), 1),
+        Triple("KPK dari 4 dan 6 adalah ...", listOf("8", "10", "12", "24"), 2),
+        Triple("FPB dari 12 dan 18 adalah ...", listOf("3", "6", "9", "12"), 1),
+        Triple("Bentuk sederhana 6/12 adalah ...", listOf("1/2", "1/3", "2/3", "3/4"), 0),
+        Triple("Jika 2x = 18, nilai x adalah ...", listOf("6", "8", "9", "12"), 2),
+        Triple("Volume kubus dengan rusuk 3 cm adalah ...", listOf("9 cm³", "18 cm³", "27 cm³", "36 cm³"), 2),
+        Triple("Perbandingan 2 : 6 dalam bentuk sederhana adalah ...", listOf("1 : 2", "1 : 3", "2 : 3", "3 : 1"), 1)
+    )
+
+    return data.mapIndexed { i, item ->
+        Question(
+            id = i + 1L,
+            text = item.first,
+            options = item.second,
+            correct = item.third
+        )
+    }
+}
+
+private fun questionToJson(q: Question) = JSONObject().apply {
+    put("id", q.id)
+    put("text", q.text)
+    put("options", JSONArray(q.options))
+    put("correct", q.correct)
+}
+
+private fun questionFromJson(o: JSONObject) = Question(
+    id = o.optLong("id"),
+    text = o.optString("text"),
+    options = o.optJSONArray("options").let { a ->
+        (0 until (a?.length() ?: 0)).map { a!!.optString(it) }
+    },
+    correct = o.optInt("correct")
+)
+
+private fun questionsToJson(list: List<Question>) =
+    JSONArray().apply {
+        list.forEach { put(questionToJson(it)) }
+    }
+
+private fun questionsFromJson(a: JSONArray?): List<Question> {
+    if (a == null) return emptyList()
+    return (0 until a.length()).mapNotNull {
+        runCatching { questionFromJson(a.getJSONObject(it)) }.getOrNull()
+    }.filter { it.text.isNotBlank() && it.options.size == 4 }
+}
+
+private fun saveBank(
+    prefs: android.content.SharedPreferences,
+    questions: List<Question>
+) {
+    prefs.edit().putString("question_bank", questionsToJson(questions).toString()).apply()
+}
+
+private fun loadBank(prefs: android.content.SharedPreferences): List<Question> {
+    val raw = prefs.getString("question_bank", null) ?: return defaultQuestions()
+    return runCatching {
+        questionsFromJson(JSONArray(raw)).ifEmpty { defaultQuestions() }
+    }.getOrDefault(defaultQuestions())
+}
+
+private fun resultToJson(r: ExamResult) = JSONObject().apply {
+    put("name", r.name)
+    put("classroom", r.classroom)
+    put("score", r.score)
+    put("correct", r.correct)
+    put("wrong", r.wrong)
+    put("date", r.date)
+}
+
+private fun loadResults(prefs: android.content.SharedPreferences): List<ExamResult> {
+    val raw = prefs.getString("results", null) ?: return emptyList()
+    return runCatching {
+        val a = JSONArray(raw)
+        (0 until a.length()).map {
+            val o = a.getJSONObject(it)
+            ExamResult(
+                name = o.optString("name"),
+                classroom = o.optString("classroom"),
+                score = o.optInt("score"),
+                correct = o.optInt("correct"),
+                wrong = o.optInt("wrong"),
+                date = o.optLong("date")
+            )
+        }
+    }.getOrDefault(emptyList())
+}
+
+private fun saveResults(
+    prefs: android.content.SharedPreferences,
+    results: List<ExamResult>
+) {
+    prefs.edit().putString(
+        "results",
+        JSONArray().apply { results.forEach { put(resultToJson(it)) } }.toString()
+    ).apply()
+}
+
+private fun sessionToJson(s: ExamSession) = JSONObject().apply {
+    put("name", s.name)
+    put("classroom", s.classroom)
+    put("questions", questionsToJson(s.questions))
+    put("index", s.index)
+    put("endTime", s.endTime)
+    put("warnings", s.warnings)
+    put("answers", JSONObject().apply {
+        s.answers.forEach { (key, value) -> put(key.toString(), value) }
+    })
+}
+
+private fun loadSession(prefs: android.content.SharedPreferences): ExamSession? {
+    val raw = prefs.getString("active_session", null) ?: return null
+    return runCatching {
+        val o = JSONObject(raw)
+        val answersObject = o.optJSONObject("answers") ?: JSONObject()
+        val answers = mutableMapOf<Int, Int>()
+        val keys = answersObject.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            answers[key.toInt()] = answersObject.optInt(key)
+        }
+
+        ExamSession(
+            name = o.optString("name"),
+            classroom = o.optString("classroom"),
+            questions = questionsFromJson(o.optJSONArray("questions")),
+            answers = answers,
+            index = o.optInt("index"),
+            endTime = o.optLong("endTime"),
+            warnings = o.optInt("warnings")
+        )
+    }.getOrNull()
 }
 
 @Composable
-fun MathGuardApp() {
+private fun MathGuardApp() {
     val context = LocalContext.current
-
-    var screen by remember { mutableStateOf("home") }
-    
-var focusWarnings by remember {
-    mutableIntStateOf(0)
-}
-
-val lifecycleOwner = LocalLifecycleOwner.current
-
-DisposableEffect(lifecycleOwner, screen) {
-    val observer = LifecycleEventObserver { _, event ->
-        if (
-            screen == "exam" &&
-            event == Lifecycle.Event.ON_PAUSE
-        ) {
-            focusWarnings++
-        }
+    val prefs = remember {
+        context.getSharedPreferences("mathguard_data", android.content.Context.MODE_PRIVATE)
     }
 
-    lifecycleOwner.lifecycle.addObserver(observer)
-
-    onDispose {
-        lifecycleOwner.lifecycle.removeObserver(observer)
-    }
-}
-    var studentName by remember { mutableStateOf("") }
-    var classroom by remember { mutableStateOf("") }
-    var teacherPin by remember { mutableStateOf("") }
-    var errorMessage by remember { mutableStateOf("") }
-
-    val questions = remember {
-        mutableStateListOf<MathQuestion>()
-    }
-    val selectedAnswers = remember {
-        mutableStateMapOf<Int, String>()
+    val bank = remember {
+        mutableStateListOf<Question>().apply { addAll(loadBank(prefs)) }
     }
     val results = remember {
-        mutableStateListOf<ExamResult>().apply {
-            addAll(loadResults(context))
+        mutableStateListOf<ExamResult>().apply { addAll(loadResults(prefs)) }
+    }
+
+    val restored = remember {
+        loadSession(prefs)?.takeIf {
+            it.endTime > System.currentTimeMillis() && it.questions.isNotEmpty()
         }
     }
 
-    var currentQuestion by remember { mutableIntStateOf(0) }
-    var remainingSeconds by remember { mutableIntStateOf(3600) }
-    var finalScore by remember { mutableIntStateOf(0) }
-    var finalCorrect by remember { mutableIntStateOf(0) }
-    var finalWrong by remember { mutableIntStateOf(0) }
+    var screen by remember { mutableStateOf(if (restored != null) "exam" else "home") }
+    var studentName by remember { mutableStateOf(restored?.name ?: "") }
+    var classroom by remember { mutableStateOf(restored?.classroom ?: "") }
+    var teacherPin by remember { mutableStateOf("") }
 
-    val submitExam: () -> Unit = {
-        if (screen == "exam") {
-            val correct = questions.count {
-                selectedAnswers[it.id] == it.answer
-            }
-            val wrong = questions.size - correct
-            finalCorrect = correct
-            finalWrong = wrong
-            finalScore = correct * 5
+    val examQuestions = remember {
+        mutableStateListOf<Question>().apply {
+            addAll(restored?.questions ?: emptyList())
+        }
+    }
+    val answers = remember {
+        mutableStateMapOf<Int, Int>().apply {
+            restored?.answers?.forEach { (k, v) -> put(k, v) }
+        }
+    }
 
-            val result = ExamResult(
-                studentName.trim(),
-                classroom.trim(),
-                finalScore,
-                correct,
-                wrong
+    var questionIndex by remember { mutableIntStateOf(restored?.index ?: 0) }
+    var endTime by remember { mutableLongStateOf(restored?.endTime ?: 0L) }
+    var focusWarnings by remember { mutableIntStateOf(restored?.warnings ?: 0) }
+    var remainingSeconds by remember {
+        mutableLongStateOf(
+            restored?.let { ((it.endTime - System.currentTimeMillis()) / 1000).coerceAtLeast(0) }
+                ?: 3600L
+        )
+    }
+
+    var newQuestionText by remember { mutableStateOf("") }
+    var optionA by remember { mutableStateOf("") }
+    var optionB by remember { mutableStateOf("") }
+    var optionC by remember { mutableStateOf("") }
+    var optionD by remember { mutableStateOf("") }
+    var correctOption by remember { mutableIntStateOf(0) }
+    var message by remember { mutableStateOf("") }
+
+    fun persistSession() {
+        if (screen == "exam" && examQuestions.isNotEmpty() && endTime > 0L) {
+            val session = ExamSession(
+                name = studentName,
+                classroom = classroom,
+                questions = examQuestions.toList(),
+                answers = answers.toMap(),
+                index = questionIndex,
+                endTime = endTime,
+                warnings = focusWarnings
             )
-            results.add(result)
-            saveResults(context, results.toList())
-            screen = "result"
+            prefs.edit().putString("active_session", sessionToJson(session).toString()).apply()
         }
     }
 
-    LaunchedEffect(screen, remainingSeconds) {
-        if (screen == "exam") {
-            if (remainingSeconds > 0) {
-                delay(1000)
-                remainingSeconds--
-            } else {
-                submitExam()
-            }
+    fun finishExam() {
+        val correctCount = answers.count { (index, selected) ->
+            index in examQuestions.indices &&
+                selected == examQuestions[index].correct
         }
-    }
+        val wrongCount = examQuestions.size - correctCount
+        val score = if (examQuestions.isEmpty()) 0
+        else (correctCount * 100) / examQuestions.size
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text("TKA MathGuard SMP", style = MaterialTheme.typography.headlineMedium)
-        Text(
-            "Ujian Matematika SMP",
-            style = MaterialTheme.typography.titleMedium
+        val result = ExamResult(
+            name = studentName,
+            classroom = classroom,
+            score = score,
+            correct = correctCount,
+            wrong = wrongCount,
+            date = System.currentTimeMillis()
         )
 
-        when (screen) {
-            "home" -> {
-                Spacer(Modifier.height(16.dp))
-                Text("Selamat datang!")
-                Text("Latihan dan ujian Matematika SMP dengan penilaian otomatis.")
+        results.add(result)
+        saveResults(prefs, results.toList())
+        prefs.edit().remove("active_session").apply()
+        screen = "result"
+    }
 
-                Button(
-                    onClick = {
-                        errorMessage = ""
-                        screen = "setup"
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Mulai Ujian")
-                }
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-                OutlinedButton(
-                    onClick = {
-                        teacherPin = ""
-                        errorMessage = ""
-                        screen = "teacherLogin"
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Menu Guru")
-                }
+    DisposableEffect(lifecycleOwner, screen) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (screen == "exam" && event == Lifecycle.Event.ON_PAUSE) {
+                focusWarnings++
+                persistSession()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
-                Text("20 soal • 60 menit • Nilai otomatis")
+    LaunchedEffect(screen, endTime) {
+        while (screen == "exam") {
+            remainingSeconds = ((endTime - System.currentTimeMillis()) / 1000)
+                .coerceAtLeast(0)
+            if (remainingSeconds <= 0L) {
+                finishExam()
+                break
+            }
+            delay(1000)
+        }
+    }
+
+    BackHandler(enabled = screen == "exam") {
+        message = "Ujian sedang berlangsung. Gunakan tombol di dalam aplikasi."
+    }
+
+    Surface(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("TKA MathGuard SMP", style = MaterialTheme.typography.headlineMedium)
+            Text("Aplikasi Ujian Matematika SMP")
+
+            if (message.isNotBlank()) {
+                Text(message, color = MaterialTheme.colorScheme.error)
             }
 
-            "setup" -> {
-                Text("Identitas Peserta", style = MaterialTheme.typography.titleLarge)
-
-                OutlinedTextField(
-                    value = studentName,
-                    onValueChange = { studentName = it },
-                    label = { Text("Nama lengkap") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = classroom,
-                    onValueChange = { classroom = it },
-                    label = { Text("Kelas, contoh: 9A") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-
-                if (errorMessage.isNotBlank()) {
-                    Text(errorMessage, color = MaterialTheme.colorScheme.error)
-                }
-
-                Button(
-                    onClick = {
-                        if (studentName.isBlank() || classroom.isBlank()) {
-                            errorMessage = "Isi nama dan kelas terlebih dahulu."
-                        } else {
-                            questions.clear()
-                            questions.addAll(
-                                questionBank().shuffled().map {
-                                    it.copy(options = it.options.shuffled())
-                                }
-                            )
-                            selectedAnswers.clear()
-                            currentQuestion = 0
-                            remainingSeconds = 3600
-                            screen = "exam"
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Mulai Mengerjakan")
-                }
-
-                TextButton(onClick = { screen = "home" }) {
-                    Text("Kembali")
-                }
-            }
-
-            "exam" -> {
-                val q = questions.getOrNull(currentQuestion)
-
-                Text("Peserta: $studentName • Kelas $classroom")
-                Text(
-                    "Sisa waktu: %02d:%02d".format(
-                        remainingSeconds / 60,
-                        remainingSeconds % 60
-                    ),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = if (remainingSeconds < 300)
-                        MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.primary
-                )
-
-                LinearProgressIndicator(
-                    progress = {
-                        (currentQuestion + 1).toFloat() /
-                            questions.size.coerceAtLeast(1)
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                if (q != null) {
+            when (screen) {
+                "home" -> {
                     Text(
-                        "Soal ${currentQuestion + 1} dari ${questions.size}",
-                        style = MaterialTheme.typography.titleMedium
+                        "Ujian matematika dengan penyimpanan sesi dan rekap nilai.",
+                        style = MaterialTheme.typography.bodyLarge
                     )
-                    Text(q.text, style = MaterialTheme.typography.bodyLarge)
-
-                    q.options.forEach { option ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = { selectedAnswers[q.id] = option }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                RadioButton(
-                                    selected = selectedAnswers[q.id] == option,
-                                    onClick = { selectedAnswers[q.id] = option }
-                                )
-                                Text(
-                                    option,
-                                    modifier = Modifier.padding(top = 12.dp)
-                                )
+                    OutlinedTextField(
+                        value = studentName,
+                        onValueChange = { studentName = it },
+                        label = { Text("Nama siswa") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = classroom,
+                        onValueChange = { classroom = it },
+                        label = { Text("Kelas, contoh: 8A") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(
+                        onClick = {
+                            if (studentName.isBlank() || classroom.isBlank()) {
+                                message = "Isi nama siswa dan kelas terlebih dahulu."
+                            } else {
+                                examQuestions.clear()
+                                examQuestions.addAll(bank.shuffled().take(20))
+                                answers.clear()
+                                questionIndex = 0
+                                focusWarnings = 0
+                                endTime = System.currentTimeMillis() + 60 * 60 * 1000L
+                                remainingSeconds = 3600L
+                                message = ""
+                                screen = "exam"
+                                persistSession()
                             }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        OutlinedButton(
-                            onClick = {
-                                if (currentQuestion > 0) currentQuestion--
-                            },
-                            enabled = currentQuestion > 0
-                        ) {
-                            Text("Sebelumnya")
+                        Text("Mulai Ujian")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            teacherPin = ""
+                            message = ""
+                            screen = "teacherLogin"
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Panel Guru")
+                    }
+                    Text("Bank soal tersedia: ${bank.size}")
+                }
+
+                "exam" -> {
+                    if (examQuestions.isNotEmpty()) {
+                        val q = examQuestions[questionIndex.coerceIn(examQuestions.indices)]
+                        val minutes = remainingSeconds / 60
+                        val seconds = remainingSeconds % 60
+
+                        Text("Peserta: $studentName • Kelas $classroom")
+                        Text(
+                            "Sisa waktu: %02d:%02d".format(minutes, seconds),
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                        Text("Soal ${questionIndex + 1} dari ${examQuestions.size}")
+                        LinearProgressIndicator(
+                            progress = { (questionIndex + 1f) / examQuestions.size },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        if (focusWarnings > 0) {
+                            Text(
+                                "Peringatan: aplikasi ditinggalkan $focusWarnings kali. Tetap fokus pada ujian.",
+                                color = MaterialTheme.colorScheme.error
+                            )
                         }
 
-                        if (currentQuestion < questions.lastIndex) {
-                            Button(onClick = { currentQuestion++ }) {
-                                Text("Berikutnya")
+                        Text(q.text, style = MaterialTheme.typography.titleMedium)
+
+                        q.options.forEachIndexed { index, option ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    answers[questionIndex] = index
+                                    persistSession()
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    RadioButton(
+                                        selected = answers[questionIndex] == index,
+                                        onClick = {
+                                            answers[questionIndex] = index
+                                            persistSession()
+                                        }
+                                    )
+                                    Text("${'A' + index}. $option")
+                                }
                             }
-                        } else {
-                            Button(onClick = submitExam) {
-                                Text("Selesai Ujian")
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    if (questionIndex > 0) {
+                                        questionIndex--
+                                        persistSession()
+                                    }
+                                },
+                                enabled = questionIndex > 0,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Sebelumnya")
+                            }
+
+                            Button(
+                                onClick = {
+                                    if (questionIndex < examQuestions.lastIndex) {
+                                        questionIndex++
+                                        persistSession()
+                                    } else {
+                                        finishExam()
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(if (questionIndex == examQuestions.lastIndex) "Selesai" else "Berikutnya")
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = { finishExam() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Kumpulkan Ujian")
+                        }
+                    } else {
+                        Text("Tidak ada soal dalam sesi ujian.")
+                        Button(onClick = {
+                            prefs.edit().remove("active_session").apply()
+                            screen = "home"
+                        }) {
+                            Text("Kembali")
+                        }
+                    }
+                }
+
+                "result" -> {
+                    val last = results.lastOrNull()
+                    Text("Ujian selesai!", style = MaterialTheme.typography.headlineSmall)
+                    if (last != null) {
+                        Text("Nama: ${last.name}")
+                        Text("Kelas: ${last.classroom}")
+                        Text("Nilai: ${last.score}")
+                        Text("Jawaban benar: ${last.correct}")
+                        Text("Jawaban salah/kosong: ${last.wrong}")
+                    }
+                    Button(
+                        onClick = {
+                            studentName = ""
+                            classroom = ""
+                            message = ""
+                            screen = "home"
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Kembali ke Beranda")
+                    }
+                }
+
+                "teacherLogin" -> {
+                    Text("Login Guru", style = MaterialTheme.typography.titleLarge)
+                    OutlinedTextField(
+                        value = teacherPin,
+                        onValueChange = { teacherPin = it },
+                        label = { Text("PIN guru") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(
+                        onClick = {
+                            if (teacherPin == "1234") {
+                                message = ""
+                                screen = "teacher"
+                            } else {
+                                message = "PIN salah."
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Masuk")
+                    }
+                    OutlinedButton(onClick = { screen = "home" }) {
+                        Text("Kembali")
+                    }
+                }
+
+                "teacher" -> {
+                    Text("Panel Guru", style = MaterialTheme.typography.headlineSmall)
+                    Text("Jumlah soal: ${bank.size}")
+                    Text("Jumlah hasil ujian: ${results.size}")
+
+                    Button(
+                        onClick = {
+                            newQuestionText = ""
+                            optionA = ""
+                            optionB = ""
+                            optionC = ""
+                            optionD = ""
+                            correctOption = 0
+                            screen = "addQuestion"
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Buat Soal Baru")
+                    }
+
+                    Text("Bank Soal", style = MaterialTheme.typography.titleMedium)
+                    bank.forEachIndexed { index, q ->
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text("${index + 1}. ${q.text}")
+                                Text("Kunci: ${'A' + q.correct}")
+                                OutlinedButton(
+                                    onClick = {
+                                        bank.removeAt(index)
+                                        saveBank(prefs, bank.toList())
+                                    }
+                                ) {
+                                    Text("Hapus Soal")
+                                }
                             }
                         }
                     }
 
-                    Text("Pilih jawaban untuk setiap soal. Jawaban yang belum dipilih dianggap salah.")
-                }
-            }
+                    Button(
+                        onClick = { screen = "teacherResults" },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Rekap dan Peringkat Siswa")
+                    }
 
-            "result" -> {
-                Text("Ujian Selesai!", style = MaterialTheme.typography.headlineSmall)
-                Text("Nama: $studentName")
-                Text("Kelas: $classroom")
-                Text("Nilai: $finalScore / 100", style = MaterialTheme.typography.titleLarge)
-                Text("Jawaban benar: $finalCorrect")
-                Text("Jawaban salah atau kosong: $finalWrong")
-
-                Button(
-                    onClick = { screen = "home" },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Kembali ke Menu Utama")
-                }
-            }
-
-            "teacherLogin" -> {
-                Text("Akses Guru", style = MaterialTheme.typography.titleLarge)
-                Text("Masukkan PIN guru.")
-                OutlinedTextField(
-                    value = teacherPin,
-                    onValueChange = { teacherPin = it },
-                    label = { Text("PIN guru") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                Text("PIN awal: 1234. Ganti PIN di kode sebelum digunakan sungguhan.")
-
-                if (errorMessage.isNotBlank()) {
-                    Text(errorMessage, color = MaterialTheme.colorScheme.error)
+                    OutlinedButton(
+                        onClick = { screen = "home" },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Keluar Panel Guru")
+                    }
                 }
 
-                Button(
-                    onClick = {
-                        if (teacherPin == "1234") {
-                            errorMessage = ""
-                            screen = "teacher"
-                        } else {
-                            errorMessage = "PIN salah."
+                "addQuestion" -> {
+                    Text("Buat Soal Baru", style = MaterialTheme.typography.titleLarge)
+                    OutlinedTextField(
+                        value = newQuestionText,
+                        onValueChange = { newQuestionText = it },
+                        label = { Text("Teks soal") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = optionA,
+                        onValueChange = { optionA = it },
+                        label = { Text("Pilihan A") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = optionB,
+                        onValueChange = { optionB = it },
+                        label = { Text("Pilihan B") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = optionC,
+                        onValueChange = { optionC = it },
+                        label = { Text("Pilihan C") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = optionD,
+                        onValueChange = { optionD = it },
+                        label = { Text("Pilihan D") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Text("Pilih kunci jawaban:")
+                    listOf("A", "B", "C", "D").forEachIndexed { index, label ->
+                        Row {
+                            RadioButton(
+                                selected = correctOption == index,
+                                onClick = { correctOption = index }
+                            )
+                            Text(label, modifier = Modifier.padding(top = 12.dp))
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Masuk")
+                    }
+
+                    Button(
+                        onClick = {
+                            val options = listOf(optionA, optionB, optionC, optionD)
+                            if (newQuestionText.isBlank() || options.any { it.isBlank() }) {
+                                message = "Lengkapi teks soal dan keempat pilihan."
+                            } else {
+                                bank.add(
+                                    Question(
+                                        id = System.currentTimeMillis(),
+                                        text = newQuestionText.trim(),
+                                        options = options.map { it.trim() },
+                                        correct = correctOption
+                                    )
+                                )
+                                saveBank(prefs, bank.toList())
+                                message = "Soal berhasil disimpan."
+                                screen = "teacher"
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Simpan Soal")
+                    }
+                    OutlinedButton(onClick = { screen = "teacher" }) {
+                        Text("Batal")
+                    }
                 }
 
-                TextButton(onClick = { screen = "home" }) {
-                    Text("Kembali")
-                }
-            }
-
-            "teacher" -> {
-                Text("Rekap Nilai Peserta", style = MaterialTheme.typography.titleLarge)
-                Text("Data tersimpan di perangkat ini saja.")
-
-                if (results.isEmpty()) {
-                    Text("Belum ada peserta yang menyelesaikan ujian.")
-                } else {
+                "teacherResults" -> {
+                    Text("Rekap Nilai dan Peringkat", style = MaterialTheme.typography.titleLarge)
                     val ranked = results.sortedByDescending { it.score }
 
-                    LazyColumn(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        itemsIndexed(ranked) { index, result ->
+                    if (ranked.isEmpty()) {
+                        Text("Belum ada hasil ujian.")
+                    } else {
+                        ranked.forEachIndexed { index, r ->
                             Card(modifier = Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(12.dp)) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text("${index + 1}. ${r.name} — ${r.classroom}")
+                                    Text("Nilai: ${r.score}")
+                                    Text("Benar: ${r.correct} • Salah/kosong: ${r.wrong}")
                                     Text(
-                                        "${index + 1}. ${result.name}",
-                                        style = MaterialTheme.typography.titleMedium
+                                        SimpleDateFormat(
+                                            "dd-MM-yyyy HH:mm",
+                                            Locale.getDefault()
+                                        ).format(Date(r.date))
                                     )
-                                    Text("Kelas: ${result.classroom}")
-                                    Text("Nilai: ${result.score}/100")
-                                    Text("Benar: ${result.correct} • Salah/kosong: ${result.wrong}")
                                 }
                             }
                         }
                     }
-                }
 
-                OutlinedButton(
-                    onClick = {
-                        results.clear()
-                        saveResults(context, results.toList())
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Hapus Semua Rekap")
-                }
-
-                Button(
-                    onClick = { screen = "home" },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Kembali ke Menu Utama")
+                    OutlinedButton(
+                        onClick = { screen = "teacher" },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Kembali ke Panel Guru")
+                    }
                 }
             }
         }
