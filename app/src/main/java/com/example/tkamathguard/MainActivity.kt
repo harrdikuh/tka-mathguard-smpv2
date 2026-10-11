@@ -136,6 +136,29 @@ fun MathGuardApp() {
     val context = LocalContext.current
 
     var screen by remember { mutableStateOf("home") }
+    
+var focusWarnings by remember {
+    mutableIntStateOf(0)
+}
+
+val lifecycleOwner = LocalLifecycleOwner.current
+
+DisposableEffect(lifecycleOwner, screen) {
+    val observer = LifecycleEventObserver { _, event ->
+        if (
+            screen == "exam" &&
+            event == Lifecycle.Event.ON_PAUSE
+        ) {
+            focusWarnings++
+        }
+    }
+
+    lifecycleOwner.lifecycle.addObserver(observer)
+
+    onDispose {
+        lifecycleOwner.lifecycle.removeObserver(observer)
+    }
+}
     var studentName by remember { mutableStateOf("") }
     var classroom by remember { mutableStateOf("") }
     var teacherPin by remember { mutableStateOf("") }
