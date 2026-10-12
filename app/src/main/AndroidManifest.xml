@@ -7,11 +7,11 @@
     <application
         android:allowBackup="false"
         android:label="TKA MathGuard SMP"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar"
-        android:usesCleartextTraffic="false">
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
         <activity
-            android:name="com.example.tkamathguard.MainActivity"
+            android:name=".MainActivity"
             android:exported="true">
 
             <intent-filter>
