@@ -4,18 +4,33 @@ package com.example.tkamathguard
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import kotlin.random.Random
+
+private val Navy = Color(0xFF142744)
+private val Blue = Color(0xFF2864E8)
+private val Cyan = Color(0xFF27C4D9)
+private val Background = Color(0xFFF4F7FC)
+private val Ink = Color(0xFF192B45)
+private val Muted = Color(0xFF7B899D)
+private val Green = Color(0xFF159B72)
 
 data class Question(
     val subject: String,
@@ -24,11 +39,22 @@ data class Question(
     val answer: Int
 )
 
+private enum class Page {
+    REGISTER, HOME, EXAM, RESULT, TEACHER
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            MaterialTheme(
+                colorScheme = lightColorScheme(
+                    primary = Blue,
+                    secondary = Cyan,
+                    background = Background,
+                    surface = Color.White
+                )
+            ) {
                 MathGuardApp()
             }
         }
@@ -37,188 +63,470 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MathGuardApp() {
-    var started by remember { mutableStateOf(false) }
-    var submitted by remember { mutableStateOf(false) }
-    var index by remember { mutableIntStateOf(0) }
-    var remaining by remember { mutableIntStateOf(3600) }
+    var page by remember { mutableStateOf(Page.REGISTER) }
     var studentName by remember { mutableStateOf("") }
-    var answers by remember { mutableStateOf(mapOf<Int, Int>()) }
+    var school by remember { mutableStateOf("") }
+    var studentClass by remember { mutableStateOf("VII") }
+    var selectedSubject by remember { mutableStateOf("Semua") }
+    var questionIndex by remember { mutableIntStateOf(0) }
+    var remainingSeconds by remember { mutableIntStateOf(3600) }
+    var examQuestions by remember { mutableStateOf(emptyList<Question>()) }
+    var answers by remember { mutableStateOf(emptyMap<Int, Int>()) }
+    var warning by remember { mutableStateOf("") }
+    var showSubmitDialog by remember { mutableStateOf(false) }
 
-    val questions = remember {
-        createQuestions().shuffled(Random(System.currentTimeMillis()))
-    }
+    val questions = remember { createQuestions() }
 
-    LaunchedEffect(started, submitted) {
-        while (started && !submitted && remaining > 0) {
+    LaunchedEffect(page) {
+        while (page == Page.EXAM && remainingSeconds > 0) {
             delay(1000)
-            remaining--
+            if (page == Page.EXAM) {
+                remainingSeconds--
+            }
         }
-        if (started && remaining <= 0) submitted = true
+        if (page == Page.EXAM && remainingSeconds == 0) {
+            page = Page.RESULT
+        }
     }
 
-    val score = questions.indices.count {
-        answers[it] == questions[it].answer
+    fun startExam() {
+        examQuestions = questions.shuffled()
+        answers = emptyMap()
+        questionIndex = 0
+        remainingSeconds = 3600
+        page = Page.EXAM
     }
-    val blank = questions.size - answers.size
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(
-                "TKA MathGuard SMP",
-                fontSize = 27.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text("Ujian Matematika & Bahasa Indonesia")
+    fun finishExam() {
+        showSubmitDialog = false
+        page = Page.RESULT
+    }
 
-            if (!started) {
-                Text("Selamat datang!", fontSize = 22.sp)
-                Text(
-                    "20 soal • 60 menit • Soal diacak"
-                )
-                OutlinedTextField(
-                    value = studentName,
-                    onValueChange = { studentName = it },
-                    label = { Text("Nama peserta") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                Button(
-                    onClick = {
-                        if (studentName.isNotBlank()) started = true
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Mulai Ujian")
-                }
-            } else if (submitted) {
-                Text("Ujian selesai", fontSize = 25.sp)
-                Text("Peserta: $studentName")
-                Text("Jawaban benar: $score dari 20")
-                Text("Jawaban salah: ${answers.size - score}")
-                Text("Tidak dijawab: $blank")
-                Text("Nilai: ${score * 5} / 100")
-            } else {
-                val q = questions[index]
-                val minutes = remaining / 60
-                val seconds = remaining % 60
-
-                Text(
-                    "Sisa waktu: %02d:%02d".format(minutes, seconds),
-                    fontSize = 21.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                LinearProgressIndicator(
-                    progress = { (index + 1) / 20f },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Text(
-                    "Soal ${index + 1} dari ${questions.size}",
-                    fontSize = 18.sp
-                )
-                Text(
-                    q.subject,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(q.text, fontSize = 19.sp)
-
-                q.options.forEachIndexed { optionIndex, option ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            answers = answers + (index to optionIndex)
-                        },
-                        colors = CardDefaults.cardColors(
-                            containerColor =
-                                if (answers[index] == optionIndex)
-                                    MaterialTheme.colorScheme.primaryContainer
-                                else
-                                    MaterialTheme.colorScheme.surfaceVariant
-                        )
-                    ) {
-                        Text(
-                            option,
-                            modifier = Modifier.padding(16.dp)
-                        )
-                    }
-                }
-
+    Scaffold(
+        containerColor = Background,
+        topBar = {
+            if (page != Page.REGISTER) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Navy)
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedButton(
-                        onClick = { if (index > 0) index-- },
-                        enabled = index > 0
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .background(Cyan, RoundedCornerShape(14.dp)),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text("Sebelumnya")
+                        Text("✓", color = Navy, fontSize = 28.sp,
+                            fontWeight = FontWeight.Black)
                     }
-                    Button(
-                        onClick = {
-                            if (index < questions.lastIndex) index++
-                            else submitted = true
-                        }
-                    ) {
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("TKA MathGuard", color = Color.White,
+                            fontWeight = FontWeight.Bold, fontSize = 19.sp)
+                        Text("SMP • Ujian lebih terarah",
+                            color = Color(0xFFB9D4F5), fontSize = 11.sp)
+                    }
+                    if (page == Page.HOME) {
                         Text(
-                            if (index == questions.lastIndex)
-                                "Selesai"
-                            else
-                                "Berikutnya"
+                            "Guru",
+                            color = Color.White,
+                            modifier = Modifier
+                                .background(Color(0xFF304563), RoundedCornerShape(12.dp))
+                                .clickable { page = Page.TEACHER }
+                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                            fontSize = 12.sp
                         )
                     }
                 }
-
-                OutlinedButton(
-                    onClick = { submitted = true },
-                    modifier = Modifier.fillMaxWidth()
+            }
+        },
+        bottomBar = {
+            if (page == Page.HOME) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Text("Kumpulkan Ujian")
+                    Text("⌂  Beranda", color = Blue, fontWeight = FontWeight.Bold)
+                    Text("▤  Ujian", color = Muted,
+                        modifier = Modifier.clickable { startExam() })
+                    Text("◉  Profil", color = Muted,
+                        modifier = Modifier.clickable { page = Page.REGISTER })
                 }
             }
         }
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            when (page) {
+                Page.REGISTER -> RegisterScreen(
+                    name = studentName,
+                    onNameChange = { studentName = it },
+                    school = school,
+                    onSchoolChange = { school = it },
+                    studentClass = studentClass,
+                    onClassChange = { studentClass = it },
+                    onContinue = {
+                        if (studentName.isNotBlank() && school.isNotBlank()) {
+                            page = Page.HOME
+                        } else {
+                            warning = "Isi nama dan nama sekolah terlebih dahulu."
+                        }
+                    },
+                    warning = warning
+                )
+
+                Page.HOME -> HomeScreen(
+                    name = studentName,
+                    school = school,
+                    studentClass = studentClass,
+                    selectedSubject = selectedSubject,
+                    onSubjectChange = { selectedSubject = it },
+                    onStart = { startExam() }
+                )
+
+                Page.EXAM -> {
+                    val q = examQuestions.getOrNull(questionIndex)
+                    if (q != null) {
+                        ExamScreen(
+                            question = q,
+                            index = questionIndex,
+                            total = examQuestions.size,
+                            answers = answers,
+                            seconds = remainingSeconds,
+                            onAnswer = { choice ->
+                                answers = answers + (questionIndex to choice)
+                            },
+                            onPrevious = {
+                                if (questionIndex > 0) questionIndex--
+                            },
+                            onNext = {
+                                if (questionIndex < examQuestions.lastIndex) {
+                                    questionIndex++
+                                }
+                            },
+                            onJump = { questionIndex = it },
+                            onSubmit = { showSubmitDialog = true }
+                        )
+                    }
+                }
+
+                Page.RESULT -> {
+                    val correct = answers.count { (index, choice) ->
+                        examQuestions.getOrNull(index)?.answer == choice
+                    }
+                    ResultScreen(
+                        name = studentName,
+                        correct = correct,
+                        total = examQuestions.size,
+                        answered = answers.size,
+                        onHome = { page = Page.HOME },
+                        onRetry = { startExam() }
+                    )
+                }
+
+                Page.TEACHER -> TeacherScreen(
+                    onBack = { page = Page.HOME }
+                )
+            }
+        }
+    }
+
+    if (showSubmitDialog) {
+        AlertDialog(
+            onDismissRequest = { showSubmitDialog = false },
+            title = { Text("Kumpulkan ujian?") },
+            text = {
+                Text(
+                    "Jawaban terisi ${answers.size} dari ${examQuestions.size} soal. " +
+                    "Pastikan kamu siap mengakhiri ujian."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { finishExam() }) {
+                    Text("Ya, kumpulkan")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSubmitDialog = false }) {
+                    Text("Periksa lagi")
+                }
+            }
+        )
     }
 }
 
-fun createQuestions(): List<Question> {
-    val math = listOf(
-        Triple("Hasil dari 12 + 8 × 2 adalah …", listOf("40", "28", "32", "20"), 1),
-        Triple("Nilai 3² + 4² adalah …", listOf("12", "25", "49", "7"), 1),
-        Triple("Hasil ¾ + ½ adalah …", listOf("1¼", "1", "¾", "2"), 0),
-        Triple("Jika x + 7 = 15, nilai x adalah …", listOf("7", "8", "9", "22"), 1),
-        Triple("Keliling persegi sisi 6 cm adalah …", listOf("12 cm", "24 cm", "36 cm", "18 cm"), 1),
-        Triple("25% dari 200 adalah …", listOf("25", "40", "50", "75"), 2),
-        Triple("Rata-rata 4, 6, dan 8 adalah …", listOf("5", "6", "7", "8"), 1),
-        Triple("Luas persegi panjang 8 × 5 cm adalah …", listOf("13 cm²", "26 cm²", "40 cm²", "80 cm²"), 2),
-        Triple("Hasil 2(5 + 3) adalah …", listOf("13", "16", "10", "8"), 1),
-        Triple("Bilangan prima berikut adalah …", listOf("9", "15", "17", "21"), 2)
-    ).map {
-        Question("Matematika", it.first, it.second, it.third)
+@Composable
+private fun RegisterScreen(
+    name: String,
+    onNameChange: (String) -> Unit,
+    school: String,
+    onSchoolChange: (String) -> Unit,
+    studentClass: String,
+    onClassChange: (String) -> Unit,
+    onContinue: () -> Unit,
+    warning: String
+) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(Modifier.height(28.dp))
+        Box(
+            Modifier
+                .size(90.dp)
+                .background(Navy, RoundedCornerShape(28.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("✓", fontSize = 52.sp, color = Cyan,
+                fontWeight = FontWeight.Black)
+        }
+        Spacer(Modifier.height(20.dp))
+        Text("TKA MathGuard", fontSize = 29.sp,
+            fontWeight = FontWeight.ExtraBold, color = Navy)
+        Text("Teman ujianmu, penjaga fokusmu.",
+            color = Muted, fontSize = 14.sp)
+        Spacer(Modifier.height(32.dp))
+        Surface(
+            shape = RoundedCornerShape(26.dp),
+            color = Color.White,
+            shadowElevation = 2.dp
+        ) {
+            Column(Modifier.padding(22.dp)) {
+                Text("Kenalan dulu, yuk! 👋",
+                    fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Ink)
+                Text("Lengkapi identitas sebelum memulai ujian.",
+                    color = Muted, fontSize = 13.sp)
+                Spacer(Modifier.height(20.dp))
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = onNameChange,
+                    label = { Text("Nama lengkap") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    singleLine = true
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = school,
+                    onValueChange = onSchoolChange,
+                    label = { Text("Nama sekolah") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    singleLine = true
+                )
+                Spacer(Modifier.height(12.dp))
+                Text("Kelas", fontWeight = FontWeight.SemiBold, color = Ink)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("VII", "VIII", "IX").forEach { grade ->
+                        val active = studentClass == grade
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { onClassChange(grade) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (active) Blue else Background
+                        ) {
+                            Text(
+                                grade,
+                                modifier = Modifier.padding(13.dp),
+                                textAlign = TextAlign.Center,
+                                color = if (active) Color.White else Ink,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+                if (warning.isNotBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(warning, color = Color.Red, fontSize = 12.sp)
+                }
+                Spacer(Modifier.height(22.dp))
+                Button(
+                    onClick = onContinue,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(15.dp)
+                ) {
+                    Text("Masuk ke beranda  →", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Spacer(Modifier.height(20.dp))
+        Text("TKA MathGuard SMP • Versi 1.0",
+            color = Muted, fontSize = 11.sp)
     }
-
-    val bahasa = listOf(
-        Triple("Sinonim kata 'cermat' adalah …", listOf("Teliti", "Lalai", "Lambat", "Bingung"), 0),
-        Triple("Antonim kata 'optimis' adalah …", listOf("Yakin", "Pesimis", "Semangat", "Gembira"), 1),
-        Triple("Gagasan utama paragraf disebut …", listOf("Kalimat penutup", "Ide pokok", "Contoh", "Kesimpulan saja"), 1),
-        Triple("Kalimat efektif adalah kalimat yang …", listOf("Bertele-tele", "Jelas dan hemat", "Selalu panjang", "Tanpa predikat"), 1),
-        Triple("Penulisan kata baku yang benar adalah …", listOf("Resiko", "Risiko", "Resikko", "Rissiko"), 1),
-        Triple("Teks yang berisi langkah kerja disebut …", listOf("Narasi", "Prosedur", "Puisi", "Deskripsi"), 1),
-        Triple("Tanda baca untuk mengakhiri kalimat tanya adalah …", listOf(".", ",", "?", "!"), 2),
-        Triple("Tokoh yang menentang tokoh utama disebut …", listOf("Protagonis", "Antagonis", "Narator", "Figuran utama"), 1),
-        Triple("Informasi faktual bersifat …", listOf("Khayalan", "Berdasarkan kenyataan", "Dugaan saja", "Pendapat pribadi"), 1),
-        Triple("Ringkasan yang baik memuat …", listOf("Semua detail", "Inti bacaan", "Opini baru", "Dialog tambahan"), 1)
-    ).map {
-        Question("Bahasa Indonesia", it.first, it.second, it.third)
-    }
-
-    return math + bahasa
 }
+
+@Composable
+private fun HomeScreen(
+    name: String,
+    school: String,
+    studentClass: String,
+    selectedSubject: String,
+    onSubjectChange: (String) -> Unit,
+    onStart: () -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        item {
+            Text("Halo, ${name.ifBlank { "Pejuang TKA" }}! 👋",
+                fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Navy)
+            Text("$school • Kelas $studentClass", color = Muted, fontSize = 13.sp)
+        }
+        item {
+            Surface(
+                color = Navy,
+                shape = RoundedCornerShape(26.dp)
+            ) {
+                Column(Modifier.fillMaxWidth().padding(22.dp)) {
+                    Text("SIAPKAN DIRIMU", color = Cyan,
+                        fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Satu langkah lebih dekat menuju hasil terbaik.",
+                        color = Color.White, fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Fokus • Teliti • Percaya diri",
+                        color = Color(0xFFCAD9EE), fontSize = 13.sp)
+                    Spacer(Modifier.height(18.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        InfoChip("20 Soal")
+                        InfoChip("60 Menit")
+                        InfoChip("2 Mapel")
+                    }
+                }
+            }
+        }
+        item {
+            Text("Ringkasan ujian", fontSize = 18.sp,
+                fontWeight = FontWeight.Bold, color = Ink)
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                SubjectCard("🔢", "Matematika", "10 soal",
+                    Modifier.weight(1f), Color(0xFFEAF0FF))
+                SubjectCard("📚", "B. Indonesia", "10 soal",
+                    Modifier.weight(1f), Color(0xFFE5F9F5))
+            }
+        }
+        item {
+            Text("Pilih paket ujian", fontSize = 18.sp,
+                fontWeight = FontWeight.Bold, color = Ink)
+            Spacer(Modifier.height(8.dp))
+            listOf("Semua", "Matematika", "Bahasa Indonesia").forEach { subject ->
+                val active = selectedSubject == subject
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .clickable { onSubjectChange(subject) },
+                    color = if (active) Color(0xFFE7EEFF) else Color.White,
+                    shape = RoundedCornerShape(14.dp),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp, if (active) Blue else Color(0xFFE8EDF5)
+                    )
+                ) {
+                    Row(
+                        Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(subject, modifier = Modifier.weight(1f),
+                            color = Ink, fontWeight = FontWeight.SemiBold)
+                        if (active) Text("✓", color = Blue, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+        item {
+            Button(
+                onClick = onStart,
+                modifier = Modifier.fillMaxWidth().height(54.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Text("Mulai ujian sekarang  →", fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold)
+            }
+            Text("Pastikan koneksi dan perangkatmu siap.",
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                textAlign = TextAlign.Center, color = Muted, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun InfoChip(text: String) {
+    Surface(color = Color(0xFF304563), shape = RoundedCornerShape(10.dp)) {
+        Text(text, modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun SubjectCard(
+    emoji: String,
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    color: Color
+) {
+    Surface(modifier, color = color, shape = RoundedCornerShape(20.dp)) {
+        Column(Modifier.padding(14.dp)) {
+            Text(emoji, fontSize = 27.sp)
+            Spacer(Modifier.height(10.dp))
+            Text(title, color = Ink, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text(subtitle, color = Muted, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun ExamScreen(
+    question: Question,
+    index: Int,
+    total: Int,
+    answers: Map<Int, Int>,
+    seconds: Int,
+    onAnswer: (Int) -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onJump: (Int) -> Unit,
+    onSubmit: () -> Unit
+) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            .padding(18.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("UJIAN BERLANGSUNG", color = Blue,
+                    fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("Soal ${index + 1} dari $total", color = Navy,
+                    fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+            }
+            Surface(
+                color = if (seconds < 300) Color(0xFFFFE9E7) else Color.White,
+                shape = RoundedCornerShape(13.dp)
+            ) {
+                Text(
+                    "%02d:%02d".format(seconds / 60, seconds % 60),
+                    modifier = Modifier.padding(12.dp),
+                    color = if (seconds < 300) Color.Red else Navy,
+                    fontWeight = FontWeight.Bold, fontSize = 17.sp
+                )
+      
