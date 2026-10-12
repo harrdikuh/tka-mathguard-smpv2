@@ -1,4 +1,4 @@
-
+```yaml
 name: Build APK
 
 on:
@@ -24,32 +24,27 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Inspect AndroidManifest
+        run: |
+          echo "=== FILE TYPE ==="
+          file app/src/main/AndroidManifest.xml
+
+          echo "=== FIRST 100 BYTES ==="
+          python3 -c "print(repr(open('app/src/main/AndroidManifest.xml','rb').read(100)))"
+
+          echo "=== FILE CONTENT WITH LINE NUMBERS ==="
+          cat -n app/src/main/AndroidManifest.xml
+
+      - name: Validate AndroidManifest XML
+        run: |
+          python3 -c "import xml.etree.ElementTree as ET; ET.parse('app/src/main/AndroidManifest.xml'); print('XML VALID')"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Check project files
-        run: |
-          test -f settings.gradle.kts
-          test -f build.gradle.kts
-          test -f app/build.gradle.kts
-          test -f app/src/main/AndroidManifest.xml
-
-      - name: Validate AndroidManifest XML
-        run: |
-          python3 - <<'PY'
-          import xml.etree.ElementTree as ET
-
-          path = "app/src/main/AndroidManifest.xml"
-          try:
-              ET.parse(path)
-              print("AndroidManifest.xml valid")
-          except ET.ParseError as e:
-              print(f"XML ERROR: {e}")
-              raise
-          PY
-      - name: Build debug APK
+      - name: Build APK
         run: |
           if [ -f ./gradlew ]; then
             chmod +x ./gradlew
@@ -64,3 +59,4 @@ jobs:
           name: TKA-MathGuard-SMP
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+```
