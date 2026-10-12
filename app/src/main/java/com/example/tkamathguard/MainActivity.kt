@@ -24,7 +24,7 @@ private val Pale = Color(0xFFF1F5F9)
 private val Green = Color(0xFF16A34A)
 private val Orange = Color(0xFFF97316)
 
-private data class Question(
+data class Question(
     val subject: String,
     val text: String,
     val options: List<String>,
