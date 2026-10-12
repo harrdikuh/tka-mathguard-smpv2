@@ -36,6 +36,19 @@ jobs:
           test -f app/build.gradle.kts
           test -f app/src/main/AndroidManifest.xml
 
+      - name: Validate AndroidManifest XML
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          path = "app/src/main/AndroidManifest.xml"
+          try:
+              ET.parse(path)
+              print("AndroidManifest.xml valid")
+          except ET.ParseError as e:
+              print(f"XML ERROR: {e}")
+              raise
+          PY
       - name: Build debug APK
         run: |
           if [ -f ./gradlew ]; then
