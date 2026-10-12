@@ -7,42 +7,34 @@ on:
     branches:
       - main
 
-permissions:
-  contents: read
-
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
-      - name: Inspect AndroidManifest
+      - name: Inspect manifest
         run: |
-          echo "=== FILE TYPE ==="
-          file app/src/main/AndroidManifest.xml
-
           echo "=== FIRST 100 BYTES ==="
           python3 -c "print(repr(open('app/src/main/AndroidManifest.xml','rb').read(100)))"
-
-          echo "=== FILE CONTENT WITH LINE NUMBERS ==="
+          echo "=== FILE CONTENT ==="
           cat -n app/src/main/AndroidManifest.xml
 
-      - name: Validate AndroidManifest XML
-        run: |
-          python3 -c "import xml.etree.ElementTree as ET; ET.parse('app/src/main/AndroidManifest.xml'); print('XML VALID')"
+      - name: Validate manifest
+        run: python3 -c "import xml.etree.ElementTree as ET; ET.parse('app/src/main/AndroidManifest.xml'); print('XML VALID')"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: "8.9"
 
       - name: Build APK
         run: |
